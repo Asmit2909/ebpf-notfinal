@@ -1,0 +1,92 @@
+policies:
+  - name: "Strict Execution Policies"
+    action: "kill"
+    binaries:
+      - path: "/usr/bin/curl"
+        args:
+          - "malicious.com"
+          - "http://malicious.com"
+          - "https://malicious.com"
+      - path: "/usr/bin/wget"
+
+  - name: "Monitor File Access"
+    action: "block"
+    files:
+      - path: "/test"
+
+  - name: "Nginx File Jail (LFI Defense)"
+    action: "block"
+    files:
+      - path: "/test"
+        ancestors:
+          - "/usr/sbin/nginx"
+
+  - name: "Audit Only Policies"
+    action: "alert"
+    networks:
+      - port: 4444
+
+  - name: "Block Malicious IPs"
+    action: "block"
+    networks:
+      - ip: "192.168.5.6"
+
+  # --- Inbound / server-side enforcement -------------------------------
+  # These rules exercise the socket_bind / socket_listen / socket_accept
+  # hooks. Without `direction:` a network rule applies to ALL hooks.
+
+  - name: "Deny Reverse Shell Listeners"
+    action: "block"
+    networks:
+      # Nothing on this host may bind or listen on these ports.
+      # Scoped to ingress hooks so it does not also block dialing *out* to them.
+      # NOTE: kept off 4444 so it doesn't collide with the "Audit Only Policies"
+      # rule above — two rules touching the same port key: last one wins.
+      - port_range: "5555-5556"
+        direction: "bind,listen"
+
+  - name: "Refuse Responses To Blocked Peers"
+    action: "block"
+    networks:
+      # accept() is denied, so no response is ever emitted to this subnet.
+      - cidr: "10.66.0.0/16"
+        direction: "accept"
+
+  - name: "Deceive Accepts On The Admin Port"
+    action: "deceive"
+    networks:
+      # bind()/listen() on 9000 are allowed; only accept() is refused, so a
+      # client sees ECONNREFUSED even though a listener exists. Testable on
+      # loopback. To scope it to a specific peer subnet instead, use:
+      #   - cidr: "203.0.113.0/24"
+      #     port: 9000
+      #     direction: "accept"
+      - port: 9000
+        direction: "accept"
+
+  - name: "Audit All Inbound Connections"
+    action: "alert"
+    networks:
+      - port: 8080
+        direction: "ingress"
+
+sensors:
+  - name: "xdp_ml_filter"
+    type: "xdp"
+    hook: "lo"
+    # Path to the compiled XDP ML classifier object. Adjust for your deployment.
+    object_path: "/home/masti/ML_Model/src/xdp_model.o"
+
+# ---------------------------------------------------------------------------
+# Managed by bpf-sec-daemon — do not hand-edit while the daemon is running,
+# except to REMOVE a line (which un-blocks that IP on the next reload).
+#
+# IPs flagged at runtime by the sensor. This list is the permanent record and
+# has no size limit. The kernel caches a bounded, LRU-evicted subset of it;
+# an eviction only drops an IP from the fast path, never from this file.
+# ---------------------------------------------------------------------------
+auto_block:
+  - 10.0.0.4
+  - 10.0.0.3
+  - 10.0.0.2
+  - 10.0.0.1

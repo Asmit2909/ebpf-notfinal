@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.o
+*.so
+*.a
+*.log
+
+lsm/bpf-lsm-sec_copy/dependencies/
+lsm/bpf-lsm-sec_copy/bpf-sec-daemon
+xdp/dga/dga
